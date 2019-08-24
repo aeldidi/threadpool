@@ -30,7 +30,7 @@ class threadpool {
 		~threadpool();
 		void reset();
 		void wait();
-		void add_job(std::function<void()> func);
+		void add_job(std::function<void()> fn);
 };
 
 } // namespace didi
