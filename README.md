@@ -16,3 +16,59 @@ themselves.
 
 The threadpool class is availible in the `didi` namespace and can be accessed
 using `didi::threadpool`.
+
+# API Docs #
+
+Documented here will be all of the exposed functions included with the file.
+
+### class `didi::threadpool`: ###
+
+### Member Functions ###
+
+#### constructor ####
+```c++
+threadpool(int threadc);
+```
+creates a threadpool with `threadc` threads.
+
+Returns once all threads have been spun up. Throws `std::bad_argument` when
+threadc is less than 1.
+
+#### destructor ####
+```c++
+~threadpool();
+```
+
+Clears the threadpool's queue and allows the threadpool to finish any current
+jobs before freeing its resources.
+
+Returns immediately, allowing the threads to shut down on their own in the
+background.
+
+#### reset ####
+```c++
+void reset();
+```
+
+Clears the threadpool's queue so new jobs can be taken in, then waits for the
+current jobs to finish.
+
+Returns after all threads become idle.
+
+#### wait ####
+```c++
+void wait();
+```
+
+Waits for the threadpool to finish all queued jobs.
+
+Returns after all threads become idle.
+
+#### add_job ####
+```c++
+void add_job(std::function<void()> fn);
+```
+
+Adds the function fn to the head of the threadpool's jobqueue.
+
+Returns immediately.
