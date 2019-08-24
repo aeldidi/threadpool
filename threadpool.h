@@ -17,7 +17,7 @@ namespace didi {
 class tp_thread;
 class threadpool_queue;
 
-class threadpool {
+class _threadpool {
 	public:
 		int threads_alive;
 		int num_threads;
@@ -26,6 +26,17 @@ class threadpool {
 		std::condition_variable all_idle;
 		std::vector<tp_thread> threads;
 		threadpool_queue *queue;
+		_threadpool(int threadc);
+		~_threadpool();
+		void reset();
+		void wait();
+		void add_job(std::function<void()> fn);
+};
+
+class threadpool {
+	private:
+		_threadpool *tp;
+	public:
 		threadpool(int threadc);
 		~threadpool();
 		void reset();
@@ -42,6 +53,35 @@ class threadpool {
 #ifdef THREADPOOL_IMPLEMENTATION
 
 namespace didi {
+
+// ======== API ======== //
+
+// Creates a threadpool with threadc threads
+threadpool::threadpool(int threadc) {
+	tp = new _threadpool(threadc);
+}
+
+// reset()s the threadpool before freeing it's resources
+threadpool::~threadpool() {
+	delete tp;
+}
+
+// Clear's the threadpool's queue and calls threadpool::wait()
+void threadpool::reset() {
+	tp->reset();
+}
+
+// wait()s for the threadpool to finish all queued jobs
+void threadpool::wait() {
+	tp->wait();
+}
+
+// Adds job fn to the head of the threadpool's queue
+void threadpool::add_job(std::function<void()> fn) {
+	tp->add_job(fn);
+}
+
+// ======== Internal Structures ======== //
 
 class threadpool_job {
 	public:
@@ -115,11 +155,11 @@ class threadpool_queue {
 class tp_thread {
 	public:
 		std::thread thread;
-		threadpool *pool;
+		_threadpool *pool;
 };
 
 // the work function for all the threads
-static void *thread_work_function(threadpool *tp) {
+static void *thread_work_function(_threadpool *tp) {
 	threadpool_job *current = nullptr;
 	std::function<void()> fn;
 
@@ -199,7 +239,7 @@ static void *thread_work_function(threadpool *tp) {
 	return nullptr;
 }
 
-threadpool::threadpool(int threadc) {
+_threadpool::_threadpool(int threadc) {
 	if (threadc < 0) {
 		throw std::invalid_argument("threadc may not be less than 1");
 	}
@@ -229,7 +269,7 @@ threadpool::threadpool(int threadc) {
 
 }
 
-threadpool::~threadpool() {
+_threadpool::~_threadpool() {
 	int threadc;
 
 	// calling this function frees all of the jobs and calls this.wait()
@@ -252,7 +292,7 @@ threadpool::~threadpool() {
 	delete this->queue;
 }
 
-void threadpool::reset() {
+void _threadpool::reset() {
 	// clears the queue so no new jobs can be added
 	queue->clear();
 	// waits for the current jobs to finish
@@ -260,7 +300,7 @@ void threadpool::reset() {
 }
 
 // waits for threadpool to finish and go idle
-void threadpool::wait() {
+void _threadpool::wait() {
 	{
 		std::unique_lock<std::mutex> lck(count_lock);
 		while (queue->length || num_threads_working) {
@@ -270,7 +310,7 @@ void threadpool::wait() {
 }
 
 // Adds the function fn to the threadpool's jobqueue.
-void threadpool::add_job(std::function<void()> fn) {
+void _threadpool::add_job(std::function<void()> fn) {
 	threadpool_job *job = new threadpool_job;
 	queue->lock.lock();
 
