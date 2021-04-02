@@ -1,47 +1,49 @@
-/*
- * See license information at the bottom of the file.
- * To use, in one of the source files, define THREADPOOL_IMPLEMENTATION
- */
+// SPDX-License-Identifier: BlueOak-1.0.0
+// To use, in one of the source files, define THREADPOOL_IMPLEMENTATION
 
 #ifndef THREADPOOL_H
 #define THREADPOOL_H
 
-#include <thread>
-#include <mutex>
-#include <functional>
 #include <condition_variable>
+#include <functional>
+#include <mutex>
+#include <thread>
 #include <vector>
 
-namespace didi {
+namespace didi
+{
 
 class tp_thread;
 class threadpool_queue;
 
-class _threadpool {
-	public:
-		int threads_alive;
-		int num_threads;
-		int num_threads_working;
-		std::mutex count_lock;
-		std::condition_variable all_idle;
-		std::vector<tp_thread> threads;
-		threadpool_queue *queue;
-		_threadpool(int threadc);
-		~_threadpool();
-		void reset();
-		void wait();
-		void add_job(std::function<void()> fn);
+class _threadpool
+{
+public:
+	int                     threads_alive;
+	int                     num_threads;
+	int                     num_threads_working;
+	std::mutex              count_lock;
+	std::condition_variable all_idle;
+	std::vector<tp_thread>  threads;
+	threadpool_queue*       queue;
+	_threadpool(int threadc);
+	~_threadpool();
+	void reset();
+	void wait();
+	void add_job(std::function<void()> fn);
 };
 
-class threadpool {
-	private:
-		_threadpool *tp;
-	public:
-		threadpool(int threadc);
-		~threadpool();
-		void reset();
-		void wait();
-		void add_job(std::function<void()> fn);
+class threadpool
+{
+private:
+	_threadpool* tp;
+
+public:
+	threadpool(int threadc);
+	~threadpool();
+	void reset();
+	void wait();
+	void add_job(std::function<void()> fn);
 };
 
 } // namespace didi
@@ -52,123 +54,142 @@ class threadpool {
 
 #ifdef THREADPOOL_IMPLEMENTATION
 
-namespace didi {
+namespace didi
+{
 
 // ======== API ======== //
 
 // Creates a threadpool with threadc threads
-threadpool::threadpool(int threadc) {
+threadpool::threadpool(int threadc)
+{
 	tp = new _threadpool(threadc);
 }
 
 // reset()s the threadpool before freeing it's resources
-threadpool::~threadpool() {
+threadpool::~threadpool()
+{
 	delete tp;
 }
 
 // Clear's the threadpool's queue and calls threadpool::wait()
-void threadpool::reset() {
+void
+threadpool::reset()
+{
 	tp->reset();
 }
 
 // wait()s for the threadpool to finish all queued jobs
-void threadpool::wait() {
+void
+threadpool::wait()
+{
 	tp->wait();
 }
 
 // Adds job fn to the head of the threadpool's queue
-void threadpool::add_job(std::function<void()> fn) {
+void
+threadpool::add_job(std::function<void()> fn)
+{
 	tp->add_job(fn);
 }
 
 // ======== Internal Structures ======== //
 
-class threadpool_job {
-	public:
-		std::function<void()> function;
-		threadpool_job *next;
-		threadpool_job() {
-			next = nullptr;
-		};
+class threadpool_job
+{
+public:
+	std::function<void()> function;
+	threadpool_job*       next;
+	threadpool_job()
+	{
+		next = nullptr;
+	};
 };
 
-class threadpool_queue {
-	public:
-		int length;
-		std::mutex lock;
-		std::condition_variable not_empty;
-		threadpool_job *head;
-		threadpool_queue() {
-			length = 0;
-			head = nullptr;
-		};
- 		// Recursively frees all of the jobs in the threadpool's queue.
- 		// Assumes lock on queue is NOT held.
- 		// Returns on NULL.
-		void clear() {
-			threadpool_job *first = nullptr;
-			lock.lock();
-			if (head == nullptr) {
-				return;
-			}
-
-			first = head;
-			if (first->next == nullptr) {
-				delete first;
-				return;
-			}
-			destroy_all_jobs(first->next);
-			head = nullptr;
-			length = 0;
-			lock.unlock();
+class threadpool_queue
+{
+public:
+	int                     length;
+	std::mutex              lock;
+	std::condition_variable not_empty;
+	threadpool_job*         head;
+	threadpool_queue()
+	{
+		length = 0;
+		head   = nullptr;
+	};
+	// Recursively frees all of the jobs in the threadpool's queue.
+	// Assumes lock on queue is NOT held.
+	// Returns on NULL.
+	void clear()
+	{
+		threadpool_job* first = nullptr;
+		lock.lock();
+		if (head == nullptr) {
+			return;
 		}
- 		// Recursively frees all connected threadpool_jobs. Returns on NULL.
- 		// Assumes caller has a lock on the queue.
-		void destroy_all_jobs(threadpool_job *jb) {
-			if (jb == nullptr) {
-				return;
-			}
 
-			if (jb->next != nullptr) {
-				destroy_all_jobs(jb->next);
-				delete jb;
-				return;
-			}
+		first = head;
+		if (first->next == nullptr) {
+			delete first;
+			return;
 		}
-		// pushes a job to the end of the queue list
-		void push(threadpool_job *jb) {
-			if (jb == nullptr) {
-				return;
-			}
+		destroy_all_jobs(first->next);
+		head   = nullptr;
+		length = 0;
+		lock.unlock();
+	}
+	// Recursively frees all connected threadpool_jobs. Returns on NULL.
+	// Assumes caller has a lock on the queue.
+	void destroy_all_jobs(threadpool_job* jb)
+	{
+		if (jb == nullptr) {
+			return;
+		}
 
-			if (head == nullptr) {
-				head = jb;
-				return;
-			}
+		if (jb->next != nullptr) {
+			destroy_all_jobs(jb->next);
+			delete jb;
+			return;
+		}
+	}
+	// pushes a job to the end of the queue list
+	void push(threadpool_job* jb)
+	{
+		if (jb == nullptr) {
+			return;
+		}
 
-			jb->next = head;
+		if (head == nullptr) {
 			head = jb;
+			return;
 		}
+
+		jb->next = head;
+		head     = jb;
+	}
 };
 
 // a wrapper around std::thread with a pointer to it's associated threadpool
-class tp_thread {
-	public:
-		std::thread thread;
-		_threadpool *pool;
+class tp_thread
+{
+public:
+	std::thread  thread;
+	_threadpool* pool;
 };
 
 // the work function for all the threads
-static void *thread_work_function(_threadpool *tp) {
-	threadpool_job *current = nullptr;
+static void*
+thread_work_function(_threadpool* tp)
+{
+	threadpool_job*       current = nullptr;
 	std::function<void()> fn;
 
 	tp->count_lock.lock();
 	tp->num_threads++;
 	tp->count_lock.unlock();
-	
+
 	while (tp->threads_alive) {
-		threadpool_queue *queue = tp->queue;
+		threadpool_queue* queue = tp->queue;
 
 		// wait for new jobs to be availible
 		{
@@ -193,16 +214,16 @@ static void *thread_work_function(_threadpool *tp) {
 		current = queue->head;
 
 		switch (queue->length) {
-			case 0:
-				break;
-			case 1:
-				queue->head = nullptr;
-				queue-> length = 0;
-				break;
-			default:
-				queue->head = current->next;
-				queue->length--;
-				queue->not_empty.notify_one();
+		case 0:
+			break;
+		case 1:
+			queue->head   = nullptr;
+			queue->length = 0;
+			break;
+		default:
+			queue->head = current->next;
+			queue->length--;
+			queue->not_empty.notify_one();
 		}
 
 		queue->lock.unlock();
@@ -239,15 +260,16 @@ static void *thread_work_function(_threadpool *tp) {
 	return nullptr;
 }
 
-_threadpool::_threadpool(int threadc) {
+_threadpool::_threadpool(int threadc)
+{
 	if (threadc < 0) {
 		throw std::invalid_argument("threadc may not be less than 1");
 	}
-	
+
 	// ==== threadpool Initialization ==== /
 
-	threads_alive = 1;
-	num_threads = 0;
+	threads_alive       = 1;
+	num_threads         = 0;
 	num_threads_working = 0;
 
 	// ==== Queue Initialization ==== //
@@ -266,10 +288,10 @@ _threadpool::_threadpool(int threadc) {
 	while (num_threads != threadc) {
 		std::this_thread::yield();
 	}
-
 }
 
-_threadpool::~_threadpool() {
+_threadpool::~_threadpool()
+{
 	int threadc;
 
 	// calling this function frees all of the jobs and calls this.wait()
@@ -292,7 +314,9 @@ _threadpool::~_threadpool() {
 	delete this->queue;
 }
 
-void _threadpool::reset() {
+void
+_threadpool::reset()
+{
 	// clears the queue so no new jobs can be added
 	queue->clear();
 	// waits for the current jobs to finish
@@ -300,7 +324,9 @@ void _threadpool::reset() {
 }
 
 // waits for threadpool to finish and go idle
-void _threadpool::wait() {
+void
+_threadpool::wait()
+{
 	{
 		std::unique_lock<std::mutex> lck(count_lock);
 		while (queue->length || num_threads_working) {
@@ -310,12 +336,14 @@ void _threadpool::wait() {
 }
 
 // Adds the function fn to the threadpool's jobqueue.
-void _threadpool::add_job(std::function<void()> fn) {
-	threadpool_job *job = new threadpool_job;
+void
+_threadpool::add_job(std::function<void()> fn)
+{
+	threadpool_job* job = new threadpool_job;
 	queue->lock.lock();
 
 	job->function = fn;
-	job->next = nullptr;
+	job->next     = nullptr;
 
 	if (queue->length == 0) {
 		queue->head = job;
@@ -330,30 +358,3 @@ void _threadpool::add_job(std::function<void()> fn) {
 } // namespace didi
 
 #endif // THREADPOOL_IMPLEMENTATION
-
-/*
-This is free and unencumbered software released into the public domain.
-
-Anyone is free to copy, modify, publish, use, compile, sell, or
-distribute this software, either in source code form or as a compiled
-binary, for any purpose, commercial or non-commercial, and by any
-means.
-
-In jurisdictions that recognize copyright laws, the author or authors
-of this software dedicate any and all copyright interest in the
-software to the public domain. We make this dedication for the benefit
-of the public at large and to the detriment of our heirs and
-successors. We intend this dedication to be an overt act of
-relinquishment in perpetuity of all present and future rights to this
-software under copyright law.
-
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
-EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
-MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
-IN NO EVENT SHALL THE AUTHORS BE LIABLE FOR ANY CLAIM, DAMAGES OR
-OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
-ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
-OTHER DEALINGS IN THE SOFTWARE.
-
-For more information, please refer to <http://unlicense.org/>
-*/
